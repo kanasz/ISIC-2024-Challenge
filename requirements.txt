@@ -4,3 +4,5 @@ h5py
 pytorch-lightning
 scikit-learn
 pandas
+albumentations
+tensorboard
