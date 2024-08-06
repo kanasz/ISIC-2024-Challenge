@@ -9,10 +9,11 @@ from torch.utils.data import DataLoader, Dataset, Subset
 
 
 class MedicalDataset(Dataset):
-    def __init__(self, images, metadata, transformations=None):
+    def __init__(self, images, metadata, transformations=None, hdf5_file_path = None):
         self.images = images
         self.metadata = metadata
         self.transformations = transformations
+        self.hdf5_file_path = hdf5_file_path
 
     def __len__(self):
         return len(self.labels)
@@ -23,6 +24,12 @@ class MedicalDataset(Dataset):
         metadata = df_selected
         metadata = metadata.drop(columns=['target'])
         isic_id = metadata['isic_id'].values[0]
+
+        # Open the HDF5 file within the worker process
+        #with h5py.File(self.hdf5_file_path, 'r') as h5file:
+        #    image = Image.open(BytesIO(h5file[isic_id][()]))
+
+
         image = Image.open(BytesIO(self.images[isic_id][()]))
         image = np.array(image)
 
@@ -53,9 +60,9 @@ class MedicalDataModule(pl.LightningDataModule):
         train_indices = [i for i, pid in enumerate(patient_ids) if pid in train_patients]
         val_indices = [i for i, pid in enumerate(patient_ids) if pid in val_patients]
 
-        self.train_dataset = Subset(MedicalDataset(f, df_metadata, transformations=self.transforms['train']),
+        self.train_dataset = Subset(MedicalDataset(f, df_metadata, transformations=self.transforms['train'],hdf5_file_path=self.image_path),
                                     train_indices)
-        self.val_dataset = Subset(MedicalDataset(f, df_metadata, transformations=self.transforms['validation']),
+        self.val_dataset = Subset(MedicalDataset(f, df_metadata, transformations=self.transforms['validation'],hdf5_file_path=self.image_path),
                                   val_indices)
 
     def train_dataloader(self):
