@@ -7,24 +7,18 @@ import torchvision.models as models
 import pytorch_lightning as pl
 from sklearn.metrics import confusion_matrix, roc_auc_score
 from torchmetrics.classification import Accuracy, F1Score, BinaryAccuracy, BinaryF1Score
-
+from efficientnet_pytorch import EfficientNet
 from utils.plot_functions import plot_confusion_matrix
 
 
-class ResNetBinaryClassifier(pl.LightningModule):
+class EfficientNetBinaryClassifier(pl.LightningModule):
     def __init__(self, num_classes=1, learning_rate=0.001, criterion = F.binary_cross_entropy_with_logits):
-        super(ResNetBinaryClassifier, self).__init__()
+        super(EfficientNetBinaryClassifier, self).__init__()
         self.learning_rate = learning_rate
-        self.resnet = models.resnet18(pretrained=True)
-        #self.save_hyperparameters()
+        self.model = EfficientNet.from_pretrained('efficientnet-b0', num_classes=num_classes)
 
-        #self.fc1 = self.resnet.fc
-        #self.fc2 = nn.Linear(self.fc1.out_features, num_classes)
-        #self.resnet.fc = nn.Identity()
-
-        # Replace the last fully connected layer for binary classification
-        num_ftrs = self.resnet.fc.in_features
-        self.resnet.fc = nn.Linear(num_ftrs, num_classes)
+        self.model._fc = torch.nn.Linear(self.model._fc.in_features, 1)
+        self.lr = learning_rate
         self.sigmoid = nn.Sigmoid()
 
 
@@ -52,7 +46,7 @@ class ResNetBinaryClassifier(pl.LightningModule):
         return
 
     def forward(self, x):
-        x = self.resnet(x)
+        x = self.model(x)
         x = self.sigmoid(x)
         return x
 
@@ -273,66 +267,3 @@ class ResNetBinaryClassifier(pl.LightningModule):
         # Adjust scale from [0.5, 1.0] to [0.5 * max_fpr**2, max_fpr]
         partial_auc = 0.5 * max_fpr**2 + (max_fpr - 0.5 * max_fpr**2) / (1.0 - 0.5) * (partial_auc_scaled - 0.5)
         return partial_auc
-class ResNetBinaryClassifier2(pl.LightningModule):
-    def __init__(self, learning_rate=1e-3):
-        super(ResNetBinaryClassifier2, self).__init__()
-        self.learning_rate = learning_rate
-
-        # Load a pre-trained ResNet model
-        self.model = models.resnet18(pretrained=True)
-
-        # Replace the last fully connected layer for binary classification
-        num_ftrs = self.model.fc.in_features
-        self.model.fc = nn.Linear(num_ftrs, 1)
-
-        # Use binary cross-entropy with logits
-        self.criterion = nn.BCEWithLogitsLoss()
-
-        self.train_accuracy = BinaryAccuracy()
-        self.val_accuracy = BinaryAccuracy()
-        self.test_accuracy = BinaryAccuracy()
-
-        self.train_f1 = BinaryF1Score()
-        self.val_f1 = BinaryF1Score()
-        self.test_f1 = BinaryF1Score()
-
-    def forward(self, x):
-        return self.model(x)
-
-    def training_step(self, batch, batch_idx):
-        images, labels = batch
-        logits = self(images).squeeze(1)  # Ensure logits is of shape (batch_size,)
-        loss = self.criterion(logits, labels.float())
-
-        preds = torch.sigmoid(logits) > 0.5
-        acc = self.train_accuracy(preds, labels)
-        f1 = self.train_f1(preds, labels)
-
-        self.log('train_loss', loss, on_epoch=True, on_step=True)
-        self.log('train_accuracy', acc, on_epoch=True, on_step=True)
-        self.log('train_f1', f1, on_epoch=True, on_step=True)
-
-        #tn, fp, fn, tp = confusion_matrix(labels.tolist(), preds.tolist(), labels=[0, 1]).ravel()
-        #self.validation_step_cms.append([tn, fp, fn, tp])
-        return loss
-
-    def validation_step(self, batch, batch_idx):
-        images, labels = batch
-        logits = self(images).squeeze(1)  # Ensure logits is of shape (batch_size,)
-        loss = self.criterion(logits, labels.float())
-
-        preds = torch.sigmoid(logits) > 0.5
-        acc = self.train_accuracy(preds, labels)
-        f1 = self.train_f1(preds, labels)
-
-        self.log('val_loss', loss, on_epoch=True, on_step=True)
-        self.log('val_accuracy', acc, on_epoch=True, on_step=True)
-        self.log('val_f1', f1, on_epoch=True, on_step=True)
-
-        #tn, fp, fn, tp = confusion_matrix(labels.tolist(), preds.tolist(), labels=[0, 1]).ravel()
-        #self.validation_step_cms.append([tn, fp, fn, tp])
-        return loss
-
-    def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
-        return optimizer

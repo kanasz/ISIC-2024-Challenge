@@ -3,69 +3,147 @@ import h5py
 import numpy as np
 import pandas as pd
 import pytorch_lightning as pl
+import torch
 from PIL import Image
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, Dataset, Subset
 
 
 class MedicalDataset(Dataset):
-    def __init__(self, images, metadata, transformations=None, hdf5_file_path = None):
+    def __init__(self, images, metadata, transformations=None, hdf5_file_path=None):
         self.images = images
         self.metadata = metadata
         self.transformations = transformations
         self.hdf5_file_path = hdf5_file_path
 
     def __len__(self):
-        return len(self.labels)
+        return self.metadata.shape[0]
 
     def __getitem__(self, idx):
-        df_selected = self.metadata.iloc[[idx]]
-        label = df_selected['target'].values[0]
-        metadata = df_selected
-        metadata = metadata.drop(columns=['target'])
-        isic_id = metadata['isic_id'].values[0]
+        with h5py.File(self.hdf5_file_path, 'r') as f:
+            #df_selected = self.metadata[self.metadata['isic_id']].iloc[idx]
+            df_selected = self.metadata.iloc[idx]
+            #df_selected = self.metadata[self.metadata['isic_id']==idx]
+            label = df_selected['target']
+            isic_id = df_selected['isic_id']
 
-        # Open the HDF5 file within the worker process
-        #with h5py.File(self.hdf5_file_path, 'r') as h5file:
-        #    image = Image.open(BytesIO(h5file[isic_id][()]))
+            image = Image.open(BytesIO(f[isic_id][()]))
+            #image = image.convert('RGB')
+            image = np.array(image)
+            #image = (image - image.min()) / (image.max() - image.min() + 1e-6) * 255
 
+            if self.transformations:
+                image = self.transformations(image=image)['image']
 
-        image = Image.open(BytesIO(self.images[isic_id][()]))
-        image = np.array(image)
-
-        if self.transformations:
-            transformed = self.transformations(image=image)  # Apply transformation
-            image = transformed['image']
-        image = image / 255
+            #image = image / 255.0  # Normalize image
 
         return image, label
 
 
 class MedicalDataModule(pl.LightningDataModule):
-    def __init__(self, image_path, metadata_path, batch_size=32, split_ratio=0.8, transforms=None):
+    def __init__(self, image_path, metadata_path, batch_size=32, split_ratio=0.8, subset_ratio=0.5, transforms=None, training_minority_oversampling_ceoff=5):
         super().__init__()
         self.image_path = image_path
         self.metadata_path = metadata_path
         self.batch_size = batch_size
         self.split_ratio = split_ratio
+        self.subset_ratio = subset_ratio  # Ratio of training data to use in each epoch
         self.transforms = transforms
+        self.train_indices = None
+        self.val_indices = None
+        self.minority_indices = None
+        self.majority_indices = None
+        self.df_metadata = None
+        self.pos_weight = torch.tensor([100], device="cuda")
+        self.cls_num_list = torch.tensor([],device="cuda")
+        self.training_minority_oversampling_ceoff = training_minority_oversampling_ceoff
 
     def setup(self, stage=None):
-        df_metadata = pd.read_csv(self.metadata_path, index_col=False)
+        self.df_metadata = pd.read_csv(self.metadata_path, index_col=False)
         f = h5py.File(self.image_path, 'r')
-        patient_ids = df_metadata['patient_id']
-        unique_patients = list(set(patient_ids))
-        train_patients, val_patients = train_test_split(unique_patients, train_size=self.split_ratio, random_state=42)
+        # Extract necessary information
 
-        train_indices = [i for i, pid in enumerate(patient_ids) if pid in train_patients]
-        val_indices = [i for i, pid in enumerate(patient_ids) if pid in val_patients]
+        self.df_metadata = self.df_metadata[self.df_metadata['tbp_lv_dnn_lesion_confidence']>95]
+        self.df_metadata = self.df_metadata.reset_index()
 
-        self.train_dataset = Subset(MedicalDataset(f, df_metadata, transformations=self.transforms['train'],hdf5_file_path=self.image_path),
-                                    train_indices)
-        self.val_dataset = Subset(MedicalDataset(f, df_metadata, transformations=self.transforms['validation'],hdf5_file_path=self.image_path),
-                                  val_indices)
+        patient_ids = self.df_metadata['patient_id'].values
+        labels = self.df_metadata['target'].values
+
+        # Group by unique patients
+        unique_patient_ids = np.unique(patient_ids)
+
+        # Temporary dataframe for stratified splitting by patient
+        temp_df = pd.DataFrame({'patient_id': unique_patient_ids})
+        temp_df['label'] = temp_df['patient_id'].map(lambda pid: labels[np.where(patient_ids == pid)[0][0]])
+
+        # Perform stratified split on patients, not individual samples
+        train_patients, val_patients = train_test_split(
+            temp_df['patient_id'],
+            test_size=1 - self.split_ratio,
+            stratify=temp_df['label'],
+            random_state=42
+        )
+
+        # Map back to indices in the original dataset
+        train_indices_all = self.df_metadata[self.df_metadata['patient_id'].isin(train_patients)].index.tolist()
+        self.val_indices = self.df_metadata[self.df_metadata['patient_id'].isin(val_patients)].index.tolist()
+
+        # Identify minority and majority class samples
+        minority_class = self.df_metadata['target'].value_counts().idxmin()
+        self.minority_indices = self.df_metadata[(self.df_metadata.index.isin(train_indices_all)) & (
+                    self.df_metadata['target'] == minority_class)].index.tolist()
+
+        self.minority_indices = self.minority_indices * self.training_minority_oversampling_ceoff
+
+        self.majority_indices = self.df_metadata[(self.df_metadata.index.isin(train_indices_all)) & (
+                    self.df_metadata['target'] != minority_class)].index.tolist()
+
+        self.minority_val_indices = self.df_metadata[(self.df_metadata.index.isin(self.val_indices)) & (
+                    self.df_metadata['target'] == minority_class)].index.tolist()
+
+        self.majority_val_indices = self.df_metadata[(self.df_metadata.index.isin(self.val_indices)) & (
+                    self.df_metadata['target'] != minority_class)].index.tolist()
+
+        # Debugging: Print information about indices
+        print(f"Total training indices: {len(train_indices_all)}")
+        print(f"Minority training class indices: {len(self.minority_indices)}")
+        print(f"Majority training class indices: {len(self.majority_indices)}")
+        print(f"Total validation indices: {len(self.val_indices)}")
+        print(f"Minority validation indices: {len(self.minority_val_indices)}")
+
+        self.pos_weight = torch.tensor([(int(len(self.majority_indices) * self.subset_ratio)) / len(self.minority_indices)], device="cuda")
+        self.cls_num_list = torch.tensor([len(self.majority_indices) * self.subset_ratio, len(self.minority_indices)], device="cuda")
+
+        self.val_dataset = Subset(MedicalDataset(f, self.df_metadata, transformations=self.transforms['validation'],
+                                                 hdf5_file_path=self.image_path),
+                                  self.val_indices)
+
+        self.train_dataset = None
+        self.update_train_dataset()
+
+    def update_train_dataset(self):
+        f = h5py.File(self.image_path, 'r')
+        # Randomly sample a subset of the majority class samples
+        n_samples_majority = int(len(self.majority_indices) * self.subset_ratio)
+        sampled_majority_indices = np.random.choice(self.majority_indices, size=n_samples_majority, replace=False)
+
+        # Combine minority samples with the resampled majority samples
+        sampled_train_indices = self.minority_indices + sampled_majority_indices.tolist()
+
+        # Debugging: Print sampled indices
+        print(f"Sampled majority class indices: {len(sampled_majority_indices)}")
+        print(f"Total sampled training indices: {len(sampled_train_indices)}")
+        print(f"Total minority training indices: {len(self.minority_indices)}")
+        if not sampled_train_indices:
+            raise ValueError("Sampled training indices are empty. Check your sampling logic.")
+
+        #self.pos_weight = torch.tensor([len(sampled_majority_indices) / len(self.minority_indices)], device="cuda")
+        # Update the train dataset with the new subset
+        self.train_dataset = Subset(MedicalDataset(f, self.df_metadata, transformations=self.transforms['train'],
+                                                   hdf5_file_path=self.image_path), sampled_train_indices)
 
     def train_dataloader(self):
+        self.update_train_dataset()  # Update dataset at each epoch
         return DataLoader(self.train_dataset, batch_size=self.batch_size, shuffle=True)
 
     def val_dataloader(self):
