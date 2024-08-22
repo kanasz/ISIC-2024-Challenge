@@ -4,6 +4,8 @@ import optuna
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
+import random
+import numpy as np
 from albumentations.pytorch import ToTensorV2
 from pytorch_lightning.callbacks import EarlyStopping
 from pytorch_lightning.loggers import TensorBoardLogger
@@ -12,11 +14,21 @@ from loss_functions.ldam_loss import LDAMLoss
 from models.resnet_binary_classifier import ResNetBinaryClassifier
 
 torch.set_float32_matmul_precision('medium')
+random_seed = 42
+random.seed(random_seed)
+torch.manual_seed(random_seed)
+np.random.seed(random_seed)
+if torch.cuda.is_available():
+    torch.cuda.manual_seed(random_seed)
+    torch.cuda.manual_seed_all(random_seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 
 def objective(trial, batch_size, image_path, metadata_path, split_ratio, subset_ratio, epochs, logger_path):
     learning_rate = trial.suggest_loguniform('learning_rate', 1e-5, 1e-3)
-    ldam_loss_s = trial.suggest_int('s', 1, 60)
+    training_minority_oversampling_ceoff = trial.suggest_int('training_minority_oversampling_ceoff',1,4)
+    #ldam_loss_s = trial.suggest_int('s', 1, 60)
     transforms = {
         "train": A.Compose([
             A.Resize(height=224, width=224),
@@ -51,18 +63,20 @@ def objective(trial, batch_size, image_path, metadata_path, split_ratio, subset_
         split_ratio=split_ratio,
         transforms=transforms,
         subset_ratio=subset_ratio,
-        training_minority_oversampling_ceoff=2
+        training_minority_oversampling_ceoff=training_minority_oversampling_ceoff
     )
     dm.setup()
     pos_weight = dm.pos_weight
 
     criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
-    w1 = dm.cls_num_list[1] / (dm.cls_num_list[0] + dm.cls_num_list[1])
-    w2 = dm.cls_num_list[0] / (dm.cls_num_list[0] + dm.cls_num_list[1])
+    #w1 = dm.cls_num_list[1] / (dm.cls_num_list[0] + dm.cls_num_list[1])
+    #w2 = dm.cls_num_list[0] / (dm.cls_num_list[0] + dm.cls_num_list[1])
     #criterion = LDAMLoss(dm.cls_num_list, weight=torch.tensor([w1, w2], device="cuda"), s=ldam_loss_s)
 
+    model = ResNetBinaryClassifier(learning_rate=learning_rate, criterion=criterion)
+    model_name = model.__class__.__name__
     tb_logger = TensorBoardLogger(logger_path,
-                                  name="ResNet_{}_isic_2024_logs".format(str(criterion).replace('(', '').replace(')', '')))
+                                  name="{}_{}_logs".format(model_name, str(criterion).replace('(', '').replace(')', '')))
 
     trainer = pl.Trainer(accelerator="gpu",
                          reload_dataloaders_every_n_epochs=1,
@@ -75,7 +89,6 @@ def objective(trial, batch_size, image_path, metadata_path, split_ratio, subset_
 
     trainer.reload_dataloaders_every_epoch = True
 
-    model = ResNetBinaryClassifier(learning_rate=learning_rate, criterion=criterion)
 
     trainer.fit(model, datamodule=dm)
 
@@ -83,8 +96,9 @@ def objective(trial, batch_size, image_path, metadata_path, split_ratio, subset_
     hparams = {
         #'batch_size': batch_size,
         'learning_rate': learning_rate,
+        'oversampling_coef':training_minority_oversampling_ceoff,
 
-        's':ldam_loss_s,
+        #'s':ldam_loss_s,
         #'optimizer': 'Adam',
         #'num_epochs': epochs,
         #'subset_ratio': subset_ratio,
@@ -115,11 +129,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--image_path", type=str, default="_raw_data/train-image.hdf5")
     parser.add_argument("--metadata_path", type=str, default="_raw_data/train-metadata.csv")
-    parser.add_argument("--batch_size", type=int, default=300)
+    parser.add_argument("--batch_size", type=int, default=350)
     parser.add_argument("--split_ratio", type=int, default=0.8)
     parser.add_argument("--logger_path", type=str, default="logs")
     parser.add_argument("--lr", type=float, default=0.01)
     parser.add_argument("--epochs", type=int, default=50)
-    parser.add_argument("--subset_ratio", type=float, default=0.01)
+    parser.add_argument("--subset_ratio", type=float, default=0.1)
     args = parser.parse_args()
     tune(vars(args))
