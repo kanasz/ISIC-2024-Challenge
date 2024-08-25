@@ -12,14 +12,30 @@ from utils.plot_functions import plot_confusion_matrix
 
 
 class EfficientNetBinaryClassifier(pl.LightningModule):
-    def __init__(self, num_classes=1, learning_rate=0.001, criterion = F.binary_cross_entropy_with_logits):
+    def __init__(self, num_classes=1, learning_rate=0.001, criterion = F.binary_cross_entropy_with_logits, num_metadata_features=5):
         super(EfficientNetBinaryClassifier, self).__init__()
         self.learning_rate = learning_rate
         self.model = EfficientNet.from_pretrained('efficientnet-b0', num_classes=num_classes)
 
-        self.model._fc = torch.nn.Linear(self.model._fc.in_features, 1)
-        self.lr = learning_rate
+        #self.model._fc = torch.nn.Linear(self.model._fc.in_features, 1)
         self.sigmoid = nn.Sigmoid()
+        num_ftrs = self.model._fc.in_features
+        self.model._fc = nn.Identity()
+
+        self.metadata_fc = nn.Sequential(
+            nn.Linear(num_metadata_features, 64),
+            nn.ReLU(),
+            nn.Dropout(0.5),
+            nn.Linear(64, 32),
+            nn.ReLU(),
+        )
+
+        self.classifier = nn.Sequential(
+            nn.Linear(num_ftrs + 32, 128),
+            nn.ReLU(),
+            nn.Linear(128, num_classes),
+            nn.Sigmoid()  # Use sigmoid for binary classification
+        )
 
 
         self.train_accuracy = BinaryAccuracy()
@@ -46,9 +62,12 @@ class EfficientNetBinaryClassifier(pl.LightningModule):
         return
 
     def forward(self, x):
-        x = self.model(x)
-        x = self.sigmoid(x)
-        return x
+        image, metadata = x
+        image_features = self.model(image)
+        metadata_features = self.metadata_fc(metadata[:, 0])
+        combined_features = torch.cat((image_features, metadata_features), dim=1)
+        output = self.classifier(combined_features)
+        return output
 
     def training_step(self, batch, batch_idx):
         images, labels = batch
@@ -70,6 +89,7 @@ class EfficientNetBinaryClassifier(pl.LightningModule):
         self.log('train_loss', loss, on_epoch=True, on_step=True)
         self.log('train_accuracy', acc, on_epoch=True, on_step=True)
         self.log('train_f1', f1, on_epoch=True, on_step=True)
+        self.log('lr', self.optimizer.param_groups[0]['lr'], on_epoch=True, on_step=False)
 
         tn, fp, fn, tp = confusion_matrix(labels.tolist(), preds.tolist(), labels=[0, 1]).ravel()
         self.training_step_cms.append([tn, fp, fn, tp])
@@ -119,7 +139,9 @@ class EfficientNetBinaryClassifier(pl.LightningModule):
         self.validation_step_cms.clear()
 
         pauc = self.computePAUCV2(self.val_targets, self.val_pred_scores)
+        #pauc2 = self.custom_metric(self.val_targets, self.val_pred_scores)
         self.log('val_pauc', pauc, on_epoch=True)
+        #self.log('val_pauc_2', pauc2, on_epoch=True)
         self.val_pred_scores.clear()
         self.val_targets.clear()
 
@@ -147,7 +169,9 @@ class EfficientNetBinaryClassifier(pl.LightningModule):
         self.training_step_cms.clear()
 
         pauc = self.computePAUCV2(self.targets, self.pred_scores)
+        #pauc2 = self.custom_metric(self.targets, self.pred_scores)
         self.log('train_pauc', pauc, on_epoch=True)
+        #self.log('train_pauc_2', pauc2, on_epoch=True)
         self.pred_scores.clear()
         self.targets.clear()
 
@@ -166,8 +190,8 @@ class EfficientNetBinaryClassifier(pl.LightningModule):
         return loss
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
-        return optimizer
+        self.optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
+        return self.optimizer
 
     def on_train_epoch_start(self):
         self.trainer.datamodule.update_train_dataset()
@@ -266,4 +290,17 @@ class EfficientNetBinaryClassifier(pl.LightningModule):
 
         # Adjust scale from [0.5, 1.0] to [0.5 * max_fpr**2, max_fpr]
         partial_auc = 0.5 * max_fpr**2 + (max_fpr - 0.5 * max_fpr**2) / (1.0 - 0.5) * (partial_auc_scaled - 0.5)
+        return partial_auc
+
+    def custom_metric(self, y_true, y_hat):
+
+        min_tpr = 0.80
+        max_fpr = abs(1 - min_tpr)
+
+        v_gt = abs(np.asarray(y_true) - 1)
+        v_pred = np.array([1.0 - x for x in y_hat])
+
+        partial_auc_scaled = roc_auc_score(v_gt, v_pred, max_fpr=max_fpr)
+        partial_auc = 0.5 * max_fpr ** 2 + (max_fpr - 0.5 * max_fpr ** 2) / (1.0 - 0.5) * (partial_auc_scaled - 0.5)
+
         return partial_auc

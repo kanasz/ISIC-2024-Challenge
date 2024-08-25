@@ -45,6 +45,7 @@ def train(args):
     )
     dm.setup()
     pos_weight = dm.pos_weight
+    weights = dm.weights
 
     #criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
     w1 =dm.cls_num_list[1] / ( dm.cls_num_list[0] + dm.cls_num_list[1])
