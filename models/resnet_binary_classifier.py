@@ -5,21 +5,43 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models as models
 import pytorch_lightning as pl
-from sklearn.metrics import confusion_matrix, roc_auc_score
+from sklearn.metrics import confusion_matrix, roc_auc_score, roc_curve, auc
 from torchmetrics.classification import Accuracy, F1Score, BinaryAccuracy, BinaryF1Score
+import torch.optim as optim
 
 from utils.plot_functions import plot_confusion_matrix
 
 
 class ResNetBinaryClassifier(pl.LightningModule):
-    def __init__(self, num_classes=1, learning_rate=0.001, criterion = F.binary_cross_entropy_with_logits):
+    def __init__(self, num_classes=1,
+                 learning_rate=0.001,
+                 criterion = F.binary_cross_entropy_with_logits,
+                 num_metadata_features=5):
         super(ResNetBinaryClassifier, self).__init__()
         self.learning_rate = learning_rate
         self.model = models.resnet18(pretrained=True)
-
         num_ftrs = self.model.fc.in_features
-        self.model.fc = nn.Linear(num_ftrs, num_classes)
-        self.sigmoid = nn.Sigmoid()
+        #self.model.fc = nn.Linear(num_ftrs, num_classes)
+        #self.sigmoid = nn.Sigmoid()
+
+        self.model.fc = nn.Identity()
+
+        self.metadata_fc = nn.Sequential(
+            nn.Linear(num_metadata_features, 64),
+            nn.ReLU(),
+            nn.Dropout(0.5),
+            nn.Linear(64, 32),
+            nn.ReLU(),
+        )
+
+
+        self.classifier = nn.Sequential(
+            nn.Linear(num_ftrs + 32, 128),
+            nn.ReLU(),
+            nn.Linear(128, num_classes),
+            nn.Sigmoid()  # Use sigmoid for binary classification
+        )
+
 
         self.train_accuracy = BinaryAccuracy()
         self.val_accuracy = BinaryAccuracy()
@@ -43,12 +65,20 @@ class ResNetBinaryClassifier(pl.LightningModule):
         return
 
     def forward(self, x):
-        x = self.model(x)
-        return x
+        image, metadata = x
+        image_features = self.model(image)
+        metadata_features = self.metadata_fc(metadata[:,0])
+        combined_features = torch.cat((image_features, metadata_features), dim=1)
+        output = self.classifier(combined_features)
+        return output
+
+        #return x
 
     def training_step(self, batch, batch_idx):
-        images, labels = batch
-        logits = self(images).squeeze(1)
+        data, labels = batch
+
+        #images, metadata = data
+        logits = self(data).squeeze(1)
 
         loss = self.criterion(logits, labels.float())
 
@@ -62,14 +92,19 @@ class ResNetBinaryClassifier(pl.LightningModule):
         self.log('train_loss', loss, on_epoch=True, on_step=True)
         self.log('train_accuracy', acc, on_epoch=True, on_step=True)
         self.log('train_f1', f1, on_epoch=True, on_step=True)
+        self.log('lr', self.optimizer.param_groups[0]['lr'], on_epoch=True, on_step=False)
+
 
         tn, fp, fn, tp = confusion_matrix(labels.tolist(), preds.tolist(), labels=[0, 1]).ravel()
         self.training_step_cms.append([tn, fp, fn, tp])
         return loss
 
     def validation_step(self, batch, batch_idx):
-        images, labels = batch
-        logits = self(images).squeeze(1)
+        data, labels = batch
+
+        images, metadata = data
+        metadata = metadata[:,0]
+        logits = self(data).squeeze(1)
         loss = self.criterion(logits, labels.float())
 
         preds = (logits > 0.5).float()
@@ -110,7 +145,9 @@ class ResNetBinaryClassifier(pl.LightningModule):
         self.validation_step_cms.clear()
 
         pauc = self.computePAUCV2(self.val_targets, self.val_pred_scores)
+        pauc2 = self.custom_metric(self.val_targets, self.val_pred_scores)
         self.log('val_pauc', pauc, on_epoch=True)
+        self.log('val_pauc_2', pauc2, on_epoch=True)
         self.val_pred_scores.clear()
         self.val_targets.clear()
 
@@ -138,7 +175,9 @@ class ResNetBinaryClassifier(pl.LightningModule):
         self.training_step_cms.clear()
 
         pauc = self.computePAUCV2(self.targets, self.pred_scores)
+        pauc2 = self.custom_metric(self.targets, self.pred_scores)
         self.log('train_pauc', pauc, on_epoch=True)
+        self.log('train_pauc_2', pauc2, on_epoch=True)
         self.pred_scores.clear()
         self.targets.clear()
 
@@ -157,8 +196,29 @@ class ResNetBinaryClassifier(pl.LightningModule):
         return loss
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
-        return optimizer
+        #self.optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate, weight_decay=1e-5)
+        self.optimizer = torch.optim.AdamW(self.parameters(), lr=self.learning_rate, weight_decay=1e-5)
+
+        # Example: OneCycleLR scheduler
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            self.optimizer,
+            mode='max',  # or 'max' for maximizing metrics like accuracy
+            factor=0.7,  # Factor by which the learning rate will be reduced
+            patience=5,  # Number of epochs with no improvement after which learning rate will be reduced
+            verbose=True,  # Print a message to the console each time the learning rate is reduced
+            min_lr=1e-6  # Minimum learning rate
+        )
+
+        return {
+            'optimizer': self.optimizer,
+            'lr_scheduler': {
+                'scheduler': scheduler,
+                'monitor': 'val_pauc',  # Metric to monitor
+                'interval': 'epoch',  # Interval at which to monitor the metric
+                'frequency': 1,  # How often to apply the scheduler
+                'name': 'reduce_lr_on_plateau'  # Name for logging purposes
+            }
+        }
 
     def on_train_epoch_start(self):
         self.trainer.datamodule.update_train_dataset()
@@ -193,4 +253,34 @@ class ResNetBinaryClassifier(pl.LightningModule):
 
         # Adjust scale from [0.5, 1.0] to [0.5 * max_fpr**2, max_fpr]
         partial_auc = 0.5 * max_fpr**2 + (max_fpr - 0.5 * max_fpr**2) / (1.0 - 0.5) * (partial_auc_scaled - 0.5)
+        return partial_auc
+
+    def p_roc_auc_score(self, y_true, y_preds, min_tpr: float = 0.80):
+        v_gt = abs(np.asarray(y_true) - 1)
+        v_pred = -1.0 * np.asarray(y_preds)
+        max_fpr = abs(1 - min_tpr)
+        fpr, tpr, _ = roc_curve(v_gt, v_pred, sample_weight=None)
+        if max_fpr is None or max_fpr == 1:
+            return auc(fpr, tpr)
+        if max_fpr <= 0 or max_fpr > 1:
+            raise ValueError("Expected min_tpr in range [0, 1), got: %r" % min_tpr)
+        stop = np.searchsorted(fpr, max_fpr, "right")
+        x_interp = [fpr[stop - 1], fpr[stop]]
+        y_interp = [tpr[stop - 1], tpr[stop]]
+        tpr = np.append(tpr[:stop], np.interp(max_fpr, x_interp, y_interp))
+        fpr = np.append(fpr[:stop], max_fpr)
+        partial_auc = auc(fpr, tpr)
+        return partial_auc
+
+    def custom_metric(self, y_true, y_hat):
+
+        min_tpr = 0.80
+        max_fpr = abs(1 - min_tpr)
+
+        v_gt = abs(np.asarray(y_true) - 1)
+        v_pred = np.array([1.0 - x for x in y_hat])
+
+        partial_auc_scaled = roc_auc_score(v_gt, v_pred, max_fpr=max_fpr)
+        partial_auc = 0.5 * max_fpr ** 2 + (max_fpr - 0.5 * max_fpr ** 2) / (1.0 - 0.5) * (partial_auc_scaled - 0.5)
+
         return partial_auc

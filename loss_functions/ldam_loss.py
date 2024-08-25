@@ -20,6 +20,7 @@ class FocalLoss(nn.Module):
         self.weight = weight
 
     def forward(self, input, target):
+        input= torch.stack([1 - input, input], dim=1)
         return focal_loss(F.cross_entropy(input, target, reduction='none', weight=self.weight), self.gamma)
 
 
