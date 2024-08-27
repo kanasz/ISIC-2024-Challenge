@@ -11,17 +11,14 @@ if __name__ == '__main__':
 
     df = pd.read_csv("_raw_data/train-metadata.csv")
     print(df.shape)
-    #print(df.columns)
-
-    #df_filtered = df[pd.isna(df['iddx_2'])==False]
-    #print(df_filtered.shape)
-    #df_filtered = df[pd.isna(df['iddx_3']) == False]
-    #print(df_filtered.shape)
     print(np.sum(df['target']))
-    df = df[df['tbp_lv_dnn_lesion_confidence']>95]
-    print(np.sum(df['target']))
+    df = df[df['tbp_lv_dnn_lesion_confidence']>70]
+    print("SAMPLES WITH HIGHER CONFIDENCE THAN 70: {}".format(np.sum(df['target'])))
     print(df.shape)
-    print(df[pd.isna(df['iddx_2'])==False])
-
-    print(df)
+    df = df[df['tbp_lv_dnn_lesion_confidence'] > 90]
+    print("SAMPLES WITH HIGHER CONFIDENCE THAN 90: {}".format(np.sum(df['target'])))
+    print(df.shape)
+    df = df[df['tbp_lv_dnn_lesion_confidence'] > 95]
+    print("SAMPLES WITH HIGHER CONFIDENCE THAN 95: {}".format(np.sum(df['target'])))
+    print(df.shape)
 
