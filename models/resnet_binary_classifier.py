@@ -28,15 +28,18 @@ class ResNetBinaryClassifier(pl.LightningModule):
 
         self.metadata_fc = nn.Sequential(
             nn.Linear(num_metadata_features, 64),
+            #nn.BatchNorm1d(64),
             nn.ReLU(),
             nn.Dropout(0.5),
             nn.Linear(64, 32),
+            nn.BatchNorm1d(32),
             nn.ReLU(),
         )
 
 
         self.classifier = nn.Sequential(
             nn.Linear(num_ftrs + 32, 128),
+            nn.BatchNorm1d(128),
             nn.ReLU(),
             nn.Linear(128, num_classes),
             nn.Sigmoid()  # Use sigmoid for binary classification

@@ -30,17 +30,24 @@ if torch.cuda.is_available():
 
 
 def objective(trial, batch_size, image_path, metadata_path, split_ratio, subset_ratio, epochs, logger_path, learning_rate):
-    learning_rate = trial.suggest_loguniform('learning_rate', 1e-5, 1e-3)
+    learning_rate = trial.suggest_loguniform('learning_rate', 1e-6, 5e-5)
+    #learning_rate = 0.000018517
+    #learning_rate = 0.00086354
     #learning_rate = 0.008
     #learning_rate = 1e-3
-    #alpha = trial.suggest_loguniform('alpha', 0.001, 1)
-    training_minority_oversampling_ceoff = trial.suggest_int('training_minority_oversampling_ceoff', 20, 35)
-    #gamma = trial.suggest_int('gamma', 1, 5)
-    alpha = None
-    gamma = None
-    #training_minority_oversampling_ceoff = 30
-    #training_minority_oversampling_ceoff = 25
-    ldam_loss_s = trial.suggest_int('s', 1, 60)
+
+    training_minority_oversampling_ceoff = trial.suggest_int('training_minority_oversampling_ceoff', 30, 40)
+    #training_minority_oversampling_ceoff = 33
+
+
+    gamma = trial.suggest_int('gamma', 1, 5)
+    alpha = trial.suggest_loguniform('alpha', 0.001, 1)
+    #alpha = None
+    #gamma = None
+    #ldam_loss_s = trial.suggest_int('s', 1, 10)
+    ldam_loss_s = None
+    #learning_rate = 0.000018517
+    #print( "LR: {}, Oversamp. Coeff.: {}, s: {}".format(learning_rate, training_minority_oversampling_ceoff, ldam_loss_s))
     transforms = {
         "train": A.Compose([
             A.RandomRotate90(),
@@ -73,18 +80,19 @@ def objective(trial, batch_size, image_path, metadata_path, split_ratio, subset_
         split_ratio=split_ratio,
         transforms=transforms,
         subset_ratio=subset_ratio,
-        training_minority_oversampling_ceoff=training_minority_oversampling_ceoff
+        training_minority_oversampling_ceoff=training_minority_oversampling_ceoff,
+        lesion_confidence_threshold=50
     )
     dm.setup()
     pos_weight = dm.pos_weight
     weights = dm.weights
 
-    #criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
-    #criterion = FocalLoss(gamma=gamma, alpha=alpha, weight=pos_weight)
+    criterion = nn.BCEWithLogitsLoss(pos_weight=pos_weight)
+    criterion = FocalLoss(gamma=gamma, alpha=alpha, weight=pos_weight)
     #criterion=nn.BCEWithLogitsLoss()
     w1 = dm.cls_num_list[1] / (dm.cls_num_list[0] + dm.cls_num_list[1])
     w2 = dm.cls_num_list[0] / (dm.cls_num_list[0] + dm.cls_num_list[1])
-    criterion = LDAMLoss(dm.cls_num_list, weight=torch.tensor([w1, w2], device="cuda"), s=ldam_loss_s)
+    #criterion = LDAMLoss(dm.cls_num_list, weight=torch.tensor([w1, w2], device="cuda"), s=ldam_loss_s)
 
     model = ResNetBinaryClassifier(learning_rate=learning_rate, criterion=criterion, num_metadata_features=dm.processed_features_shape[1])
     #model = EfficientNetBinaryClassifier(learning_rate=learning_rate, criterion=criterion, num_metadata_features=dm.processed_features_shape[1])
@@ -128,6 +136,7 @@ def objective(trial, batch_size, image_path, metadata_path, split_ratio, subset_
         's': ldam_loss_s,
         'subset_ratio':subset_ratio,
         'hp_metric': metric,
+        'training_minority_oversampling_ceoff':training_minority_oversampling_ceoff
     }
 
     tb_logger.log_hyperparams(hparams, metric)
@@ -159,6 +168,7 @@ if __name__ == "__main__":
     parser.add_argument("--logger_path", type=str, default="logs")
     parser.add_argument("--lr", type=float, default=0.0001)
     parser.add_argument("--epochs", type=int, default=30)
-    parser.add_argument("--subset_ratio", type=float, default=0.05)
+    #parser.add_argument("--subset_ratio", type=float, default=0.05)
+    parser.add_argument("--subset_ratio", type=float, default=0.1)
     args = parser.parse_args()
     tune(vars(args))
