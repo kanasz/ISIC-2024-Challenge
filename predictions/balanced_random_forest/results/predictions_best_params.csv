@@ -1,0 +1,4 @@
+criterion,entropy
+max_features,5
+n_estimators,500
+sampling_strategy,not minority
