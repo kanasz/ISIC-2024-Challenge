@@ -136,7 +136,8 @@ def objective(trial, batch_size, image_path, metadata_path, split_ratio, subset_
         's': ldam_loss_s,
         'subset_ratio':subset_ratio,
         'hp_metric': metric,
-        'training_minority_oversampling_ceoff':training_minority_oversampling_ceoff
+        'training_minority_oversampling_ceoff':training_minority_oversampling_ceoff,
+        'epochs':epochs
     }
 
     tb_logger.log_hyperparams(hparams, metric)
@@ -167,7 +168,7 @@ if __name__ == "__main__":
     parser.add_argument("--split_ratio", type=int, default=0.8)
     parser.add_argument("--logger_path", type=str, default="logs")
     parser.add_argument("--lr", type=float, default=0.0001)
-    parser.add_argument("--epochs", type=int, default=30)
+    parser.add_argument("--epochs", type=int, default=100)
     #parser.add_argument("--subset_ratio", type=float, default=0.05)
     parser.add_argument("--subset_ratio", type=float, default=0.1)
     args = parser.parse_args()
