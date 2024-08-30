@@ -118,13 +118,13 @@ def get_pipeline(classifier_name, use_one_hot = True):
     elif classifier_name == Classifier.ONE_CLASS_SVM:
         clf = OneClassSVM()
     elif classifier_name == Classifier.IMBALANCED_BALANCED_CASCADE:
-        clf = imb.BalanceCascadeClassifier(base_estimator=DecisionTreeClassifier(), random_state=RANDOM_STATE)
+        clf = imb.BalanceCascadeClassifier(estimator=DecisionTreeClassifier(), random_state=RANDOM_STATE)
     elif classifier_name == Classifier.IMBALANCED_SELF_PACED:
-        clf = imb.SelfPacedEnsembleClassifier(base_estimator=DecisionTreeClassifier(), random_state=RANDOM_STATE)
+        clf = imb.SelfPacedEnsembleClassifier(estimator=DecisionTreeClassifier(), random_state=RANDOM_STATE)
     elif classifier_name == Classifier.IMBALANCED_BALANCED_RANDOM_FOREST:
         clf = imb.BalancedRandomForestClassifier(random_state=RANDOM_STATE)
     elif classifier_name == Classifier.IMBALANCED_EASY_ENSEMBLE:
-        clf = imb.EasyEnsembleClassifier(random_state=RANDOM_STATE, base_estimator=AdaBoostClassifier(n_estimators=30))
+        clf = imb.EasyEnsembleClassifier(random_state=RANDOM_STATE, estimator=AdaBoostClassifier(n_estimators=30))
     elif classifier_name == Classifier.IMBALANCED_UNDERBAGGING:
         clf = imb.UnderBaggingClassifier(random_state=RANDOM_STATE)
     elif classifier_name == Classifier.IMBALANCED_OVERBOOST:

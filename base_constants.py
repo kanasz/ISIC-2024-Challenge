@@ -247,23 +247,23 @@ params_isolation_forest = {
 
 params_imbalanced_ensemble_balanced_cascade = {
     "model__n_estimators": [10, 50, 100, 150, 200, 250, 300, 350, 400, 450, 500],
-    "model__base_estimator__criterion": ['gini', 'entropy'],
-    "model__base_estimator__splitter": ['best', 'random'],
-    "model__base_estimator__ccp_alpha": [0.1, 0.3, 0.5, 0.7, 0.9]
+    "model__estimator__criterion": ['gini', 'entropy'],
+    "model__estimator__splitter": ['best', 'random'],
+    "model__estimator__ccp_alpha": [0.1, 0.3, 0.5, 0.7, 0.9]
 }
 
 params_imbalanced_ensemble_self_paced = {
     "model__n_estimators": [10, 50, 100, 150, 200, 250, 300, 350, 400, 450, 500],
-    "model__base_estimator__criterion": ['gini', 'entropy'],
-    "model__base_estimator__splitter": ['best', 'random'],
-    "model__base_estimator__ccp_alpha": [0.1, 0.3, 0.5, 0.7, 0.9]
+    "model__estimator_params__criterion": ['gini', 'entropy'],
+    "model__estimator_params__splitter": ['best', 'random'],
+    "model__estimator_params__ccp_alpha": [0.1, 0.3, 0.5, 0.7, 0.9]
 }
 
 params_imbalanced_ensemble_balanced_random_forest = {
     "model__n_estimators": [10, 50, 100, 150, 200, 250, 300, 350, 400, 450, 500],
     "model__criterion": ['gini', 'entropy'],
     "model__max_features": ['auto', 'log2', 5, 10, 15, 20],
-    "model__base_estimator__ccp_alpha": [0.1, 0.3, 0.5, 0.7, 0.9]
+    "model__ccp_alpha": [0.1, 0.3, 0.5, 0.7, 0.9]
 }
 
 params_imbalanced_ensemble_easy_ensemble = {
