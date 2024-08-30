@@ -1,3 +1,5 @@
+from enum import Enum
+
 SEED = 42
 
 NUMERICAL_FEATURE = [
