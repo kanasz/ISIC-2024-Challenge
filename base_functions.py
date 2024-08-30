@@ -173,7 +173,7 @@ def get_pipeline(classifier_name, use_one_hot = True):
     # Create the full pipeline by adding the model at the end
     model_pipeline = Pipeline(steps=[
         ('preprocessor', preprocessor),
-        ('brf_undersample', RandomUnderSampler(sampling_strategy=0.01, random_state=SEED)),
+        #('brf_undersample', RandomUnderSampler(sampling_strategy=0.01, random_state=SEED)),
         ('model', clf)
     ])
 
