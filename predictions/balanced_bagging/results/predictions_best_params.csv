@@ -1,0 +1,3 @@
+max_features,20
+n_estimators,350
+sampling_strategy,not minority
