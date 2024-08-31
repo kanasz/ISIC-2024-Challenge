@@ -18,6 +18,7 @@ class ResNetBinaryClassifier(pl.LightningModule):
                  criterion = F.binary_cross_entropy_with_logits,
                  num_metadata_features=5):
         super(ResNetBinaryClassifier, self).__init__()
+        self.save_hyperparameters()
         self.learning_rate = learning_rate
         self.model = models.resnet18(pretrained=True)
         num_ftrs = self.model.fc.in_features

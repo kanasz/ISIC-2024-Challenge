@@ -14,6 +14,7 @@ from utils.plot_functions import plot_confusion_matrix
 class EfficientNetBinaryClassifier(pl.LightningModule):
     def __init__(self, num_classes=1, learning_rate=0.001, criterion = F.binary_cross_entropy_with_logits, num_metadata_features=5):
         super(EfficientNetBinaryClassifier, self).__init__()
+        self.save_hyperparameters()
         self.learning_rate = learning_rate
         self.model = EfficientNet.from_pretrained('efficientnet-b0', num_classes=num_classes)
 

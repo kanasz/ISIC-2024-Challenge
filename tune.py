@@ -9,9 +9,12 @@ import numpy as np
 from albumentations.pytorch import ToTensorV2
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger
+from torchvision.models import EfficientNet_V2_S_Weights
+
 from data.medical_data_module import MedicalDataModule
 from loss_functions.ldam_loss import LDAMLoss
 from models.efficientnet_binary_classifier import EfficientNetBinaryClassifier
+from models.efficientnetv2_binary_classifier import EfficientNetV2WithMetadata
 from models.resnet_binary_classifier import ResNetBinaryClassifier
 from loss_functions.focal_loss import FocalLoss
 
@@ -30,24 +33,20 @@ if torch.cuda.is_available():
 
 
 def objective(trial, batch_size, image_path, metadata_path, split_ratio, subset_ratio, epochs, logger_path, learning_rate):
+
     learning_rate = trial.suggest_loguniform('learning_rate', 1e-6, 5e-5)
-    #learning_rate = 0.000018517
-    #learning_rate = 0.00086354
-    #learning_rate = 0.008
-    #learning_rate = 1e-3
 
-    training_minority_oversampling_ceoff = trial.suggest_int('training_minority_oversampling_ceoff', 30, 40)
-    #training_minority_oversampling_ceoff = 33
-
-
+    training_minority_oversampling_ceoff = trial.suggest_int('training_minority_oversampling_ceoff', 20, 30)
     gamma = trial.suggest_int('gamma', 1, 5)
     alpha = trial.suggest_loguniform('alpha', 0.001, 1)
+
+    print("LR: {}, ".format(learning_rate))
     #alpha = None
     #gamma = None
     #ldam_loss_s = trial.suggest_int('s', 1, 10)
     ldam_loss_s = None
-    #learning_rate = 0.000018517
-    #print( "LR: {}, Oversamp. Coeff.: {}, s: {}".format(learning_rate, training_minority_oversampling_ceoff, ldam_loss_s))
+    print( "LR: {}, Oversamp. Coeff.: {}, gamma: {}, alpha: {}".format(learning_rate, training_minority_oversampling_ceoff, gamma, alpha))
+    print("LR: {}, Oversamp. Coeff.: {}, s: {}".format(learning_rate, training_minority_oversampling_ceoff, ldam_loss_s))
     transforms = {
         "train": A.Compose([
             A.RandomRotate90(),
@@ -61,14 +60,19 @@ def objective(trial, batch_size, image_path, metadata_path, split_ratio, subset_
 
             #A.ElasticTransform(alpha=0.2, sigma=6.0, alpha_affine=20.0, p=0.5),
             A.GridDistortion(num_steps=2, distort_limit=0.2, p=0.5),
-
-            A.Resize(224, 224),
-            A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            A.Resize(128, 128),
+            A.Normalize(mean=EfficientNet_V2_S_Weights.IMAGENET1K_V1.transforms().mean,
+                                 std=EfficientNet_V2_S_Weights.IMAGENET1K_V1.transforms().std),
+            #A.Resize(224, 224),
+            #A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
             ToTensorV2(),
         ]),
         "validation": A.Compose([
-            A.Resize(height=224, width=224),
-            A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            A.Resize(128, 128),
+            A.Normalize(mean=EfficientNet_V2_S_Weights.IMAGENET1K_V1.transforms().mean,
+                        std=EfficientNet_V2_S_Weights.IMAGENET1K_V1.transforms().std),
+            #A.Resize(height=224, width=224),
+            #A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
             ToTensorV2(),
         ]),
     }
@@ -94,7 +98,7 @@ def objective(trial, batch_size, image_path, metadata_path, split_ratio, subset_
     w2 = dm.cls_num_list[0] / (dm.cls_num_list[0] + dm.cls_num_list[1])
     #criterion = LDAMLoss(dm.cls_num_list, weight=torch.tensor([w1, w2], device="cuda"), s=ldam_loss_s)
 
-    model = ResNetBinaryClassifier(learning_rate=learning_rate, criterion=criterion, num_metadata_features=dm.processed_features_shape[1])
+    model = EfficientNetV2WithMetadata(learning_rate=learning_rate, criterion=criterion, num_metadata_features=dm.processed_features_shape[1])
     #model = EfficientNetBinaryClassifier(learning_rate=learning_rate, criterion=criterion, num_metadata_features=dm.processed_features_shape[1])
     model_name = model.__class__.__name__
     tb_logger = TensorBoardLogger(logger_path,
@@ -164,11 +168,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--image_path", type=str, default="_raw_data/train-image.hdf5")
     parser.add_argument("--metadata_path", type=str, default="_raw_data/train-metadata.csv")
-    parser.add_argument("--batch_size", type=int, default=400)
+    #parser.add_argument("--batch_size", type=int, default=400)
+    parser.add_argument("--batch_size", type=int, default=160)
     parser.add_argument("--split_ratio", type=int, default=0.8)
     parser.add_argument("--logger_path", type=str, default="logs")
     parser.add_argument("--lr", type=float, default=0.0001)
-    parser.add_argument("--epochs", type=int, default=100)
+    parser.add_argument("--epochs", type=int, default=30)
     #parser.add_argument("--subset_ratio", type=float, default=0.05)
     parser.add_argument("--subset_ratio", type=float, default=0.1)
     args = parser.parse_args()
