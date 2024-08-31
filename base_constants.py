@@ -87,7 +87,7 @@ class Classifier(Enum):
 RANDOM_STATE = 1000
 N_ITERATIONS = 1
 # determined by us
-DEFAULT_CONTAMINATION = 0.2
+DEFAULT_CONTAMINATION = 0.0001
 
 ########################################################################################################################
 # param dictionaries
@@ -99,14 +99,14 @@ params_pyod_pca = {
 
 params_pyod_feature_bagging = {
     "model__contamination": [DEFAULT_CONTAMINATION],
-    "model__n_estimators": [10, 50, 100, 150, 200, 250, 300, 350, 400, 450, 500],
+    "model__n_estimators": [10, 50, 100, 150, 200],
     "model__max_features": [0.5, 0.7, 1.0],
     "model__combination": ['average', 'max']
 }
 
 params_pyod_isolation_forest = {
     "model__contamination": [DEFAULT_CONTAMINATION],
-    "model__n_estimators": [10, 50, 100, 150, 200, 250, 300, 350, 400, 450, 500],
+    "model__n_estimators": [10, 50, 100, 150, 200],
     "model__max_samples": [0.5, 0.7, 1.0, 'auto'],
     "model__max_features": [0.5, 0.7, 1.0]
 }
@@ -165,7 +165,7 @@ params_pyod_knn = {
 
 params_pyod_lmdd = {
     "model__contamination": [DEFAULT_CONTAMINATION],
-    "model__n_iter": [20, 50, 100, 150, 200, 250, 300, 350, 400, 450, 500],
+    "model__n_iter": [20, 50, 100, 150, 200],
     "model__dis_measure": ['aad', 'var', 'iqr']
 }
 
@@ -195,35 +195,35 @@ params_pyod_sos = {
 }
 
 params_rus_boost = {
-    "model__n_estimators": [50, 100, 150, 200, 250, 300, 350, 400, 450, 500],
+    "model__n_estimators": [50, 100, 150, 200],
     "model__learning_rate": [0.001, 0.01, 0.1, 0.5, 1, 3, 5, 10, 15, 20],
     "model__sampling_strategy": ['not minority', 'majority', 'auto'],
 }
 
 params_adaboost = {
-    "model__n_estimators": [10, 50, 100, 150, 200, 250, 300, 350, 400, 450]
+    "model__n_estimators": [10, 50, 100, 150, 200]
 }
 
 params_random_forest = {
-    "model__n_estimators": [10, 50, 100, 150, 200, 250, 300, 350, 400, 450, 500],
+    "model__n_estimators": [10, 50, 100, 150, 200],
     "model__max_depth": [50, 100, 150, 200, 250, 300, 350, 400, 450, 500],
     "model__max_features": ['auto', 'log2', 5, 10, 15, 20],
     "model__criterion": ['gini', 'entropy']
 }
 
 params_easy_ensemble = {
-    "model__n_estimators": [10, 50, 100, 150, 200, 250, 300, 350, 400, 450, 500]
+    "model__n_estimators": [10, 50, 100, 150, 200]
 }
 
 params_balanced_random_forest = {
-    "model__n_estimators": [10, 50, 100, 150, 200, 250, 300, 350, 400, 450, 500],
+    "model__n_estimators": [10, 50, 100, 150, 200],
     "model__criterion": ['gini', 'entropy'],
     "model__max_features": ['auto', 'log2', 5, 10, 15, 20],
     "model__sampling_strategy": ['not minority', 'majority', 'auto']
 }
 
 params_balanced_bagging = {
-    "model__n_estimators": [10, 50, 100, 150, 200, 250, 300, 350, 400, 450, 500],
+    "model__n_estimators": [10, 50, 100, 150, 200],
     "model__sampling_strategy": ['not minority', 'majority', 'auto'],
     "model__max_features": [5, 10, 15, 20]
 }
@@ -240,20 +240,20 @@ params_least_squares_anomaly_detection = {
 }
 
 params_isolation_forest = {
-    "model__n_estimators": [10, 50, 100, 150, 200, 250, 300, 350, 400, 450, 500],
+    "model__n_estimators": [10, 50, 100, 150, 200],
     "model__contamination": [0.1, 0.2, 0.3, 0.4, 0.5],
     "model__max_samples": [256, 512, 1024, 2048, 'auto']
 }
 
 params_imbalanced_ensemble_balanced_cascade = {
-    "model__n_estimators": [10, 50, 100, 150, 200, 250, 300, 350, 400, 450, 500],
+    "model__n_estimators": [10, 50, 100, 150, 200],
     "model__estimator__criterion": ['gini', 'entropy'],
     "model__estimator__splitter": ['best', 'random'],
     "model__estimator__ccp_alpha": [0.1, 0.3, 0.5, 0.7, 0.9]
 }
 
 params_imbalanced_ensemble_self_paced = {
-    "model__n_estimators": [10, 50, 100, 150, 200, 250, 300, 350, 400, 450, 500],
+    "model__n_estimators": [10, 50, 100, 150, 200],
     "model__estimator_params__criterion": ['gini', 'entropy'],
     "model__estimator_params__splitter": ['best', 'random'],
     "model__estimator_params__ccp_alpha": [0.1, 0.3, 0.5, 0.7, 0.9]
@@ -267,53 +267,53 @@ params_imbalanced_ensemble_balanced_random_forest = {
 }
 
 params_imbalanced_ensemble_easy_ensemble = {
-    "model__n_estimators": [10, 50, 100, 150, 200, 250, 300, 350, 400, 450, 500],
-    "model__max_features": ['auto', 'log2', 5, 10, 15, 20],
+    "model__n_estimators": [10, 50, 100, 150, 200],
+    "model__max_features": ['auto', 'log2', 5, 10, 15, 20, 30, 40, 50, 60],
     "model__warm_start": [True, False]
 }
 
 params_imbalanced_ensemble_underbagging = {
-    "model__n_estimators": [10, 50, 100, 150, 200, 250, 300, 350, 400, 450, 500],
-    "model__max_features": ['auto', 'log2', 5, 10, 15, 20],
+    "model__n_estimators": [10, 50, 100, 150, 200],
+    "model__max_features": ['auto', 'log2', 5, 10, 15, 20, 30, 40, 50, 60],
     "model__warm_start": [True, False]
 }
 
 params_imbalanced_ensemble_overboost = {
-    "model__n_estimators": [10, 50, 100, 150, 200, 250, 300, 350, 400, 450, 500],
+    "model__n_estimators": [10, 50, 100, 150, 200],
     "model__learning_rate": [0.001, 0.01, 0.1, 1],
     "model__algorithm": ['SAMME', 'SAMME.R']
 }
 
 params_imbalanced_ensemble_smote_boost = {
-    "model__n_estimators": [10, 50, 100, 150, 200, 250, 300, 350, 400, 450, 500],
+    "model__n_estimators": [10, 50, 100, 150, 200],
     "model__learning_rate": [0.001, 0.01, 0.1, 1],
-    "model__k_neighbors": [3, 4, 5],
+    "model__k_neighbors": [3, 4, 5, 10, 15],
     "model__algorithm": ['SAMME', 'SAMME.R']
 }
 
 params_imbalanced_ensemble_smote_bagging = {
-    "model__n_estimators": [10, 50, 100, 150, 200, 250, 300, 350, 400, 450, 500],
+    "model__n_estimators": [10, 50, 100, 150, 200],
     "model__max_features": [5, 10, 15, 20],
-    "model__k_neighbors": [3, 4, 5],
+    "model__k_neighbors": [3, 4, 5, 10, 15],
     "model__warm_start": [True, False]
 }
 
 params_imbalanced_ensemble_kmeans_smote_boost = {
-    "model__n_estimators": [10, 50, 100, 150, 200, 250, 300, 350, 400, 450, 500],
+    "model__n_estimators": [10, 50, 100, 150, 200],
     "model__learning_rate": [0.001, 0.01, 0.1, 1],
-    "model__k_neighbors": [3, 4, 5],
+    "model__k_neighbors": [3, 4, 5, 10, 15],
     "model__cluster_balance_threshold": ['auto', 0.1, 0.01, 0.001, 0.0001,0.00005,0.00001],
     "model__algorithm": ['SAMME', 'SAMME.R']
 }
 
 params_imbalanced_ensemble_adacost = {
-    "model__n_estimators": [10, 50, 100, 150, 200, 250, 300, 350, 400, 450, 500],
+    "model__n_estimators": [10, 50, 100, 150, 200],
     "model__learning_rate": [0.001, 0.01, 0.1, 1],
     "model__algorithm": ['SAMME', 'SAMME.R']
 }
 
 params_imbalanced_ensemble_adauboost = {
-    "model__n_estimators": [10, 50, 100, 150, 200, 250, 300, 350, 400, 450, 500],
+    "model__n_estimators": [10, 50, 100, 150, 200],
     "model__learning_rate": [0.001, 0.01, 0.1, 1],
     "model__algorithm": ['SAMME', 'SAMME.R']
 }
@@ -331,8 +331,8 @@ params_weighted_svc = {
 }
 
 params_weighted_random_forest = {
-    "model__n_estimators": [10, 50, 100, 150, 200, 250, 300, 350, 400, 450, 500],
-    "model__max_depth": [50, 100, 150, 200, 250, 300, 350, 400, 450, 500],
+    "model__n_estimators": [10, 50, 100, 150, 200],
+    "model__max_depth": [6, 50, 100, 150, 200],
     "model__max_features": ['auto', 'log2', 5, 10, 15, 20],
     "model__criterion": ['gini', 'entropy'],
     "model__class_weight": ['balanced', {0: 100, 1: 1}, {0: 75, 1: 1}, {0: 50, 1: 1}, {0: 25, 1: 1}, {0: 10, 1: 1},
@@ -342,7 +342,7 @@ params_weighted_random_forest = {
 params_xgboost = {
     "model__gamma": [0.001, 0.01, 0.1, 1, 10, 100],
     "model__learning_rate": [0.001, 0.01, 0.1, 0.3, 0.5, 0.7, 0.9],
-    "model__max_depth": [3, 5, 10, 50, 100, 150, 200, 250, 300, 350, 400, 450, 500],
+    "model__max_depth": [3, 5, 10, 50, 100, 150, 200],
     "model__min_child_weight": [1, 3, 5, 10],
     "model__subsample": [0.8, 0.9, 1.0]
 }
