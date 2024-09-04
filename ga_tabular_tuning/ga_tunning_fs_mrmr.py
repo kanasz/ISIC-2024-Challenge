@@ -205,7 +205,7 @@ gene_space = [
 # Initialize PyGAD
 ga_instance = pygad.GA(
     #save_best_solutions=True,
-    parallel_processing=['thread',10],
+    parallel_processing=['thread',3],
     save_best_solutions=True,
     random_seed=SEED,
     num_generations=100,  # Number of generations
