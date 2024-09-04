@@ -43,7 +43,8 @@ def get_classifier(classifier_type, solution, criterion):
 
 
 def get_data():
-    df_train = pd.read_csv("_raw_data/train-metadata.csv")
+    print("LOADING DATA")
+    df_train = pd.read_csv("_raw_data/train-metadata.csv", low_memory=False)
     groups = df_train['patient_id']
     df_train = df_train.drop(
         columns=['isic_id', 'patient_id', 'lesion_id', 'iddx_1', 'iddx_2', 'iddx_3', 'iddx_4', 'iddx_5', 'iddx_full',
