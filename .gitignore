@@ -129,6 +129,7 @@ celerybeat.pid
 .venv
 env/
 venv/
+venv_3_11/
 ENV/
 env.bak/
 venv.bak/
@@ -166,3 +167,4 @@ cython_debug/
 /checkpoints/
 /venv3_11/
 *.pkl
+ga_tuning_solution.pkl

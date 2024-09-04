@@ -12,6 +12,7 @@ from ga_tabular_tuning.ga_tuning_functions import custom_metric
 from tabular_tuning.tabular_tuning_constants import CATEGORICAL_FEATURES
 from tabular_tuning.tabular_tuning_functions import get_data, get_preprocessor
 import time
+import concurrent.futures
 
 from utils.mrmrfeatureselector import MRMRFeatureSelector
 from utils.wknn import WkNNFeatureSelector
@@ -23,10 +24,58 @@ data, labels, groups = get_data()
 X = data
 y = labels
 
+
+# Function to handle each fold's operations
+def process_fold(fold_data, n_features, xgb_params, lgb_params, cat_params):
+    fold, (train_idx, test_idx) = fold_data
+
+
+
+    # Split data into training and test sets
+    X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
+    y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
+    group_train, group_test = groups.iloc[train_idx], groups.iloc[test_idx]
+
+    # Step 1: Apply oversampling and undersampling only to the training set
+    ros = RandomOverSampler(sampling_strategy=0.003, random_state=42)
+    rus = RandomUnderSampler(sampling_strategy=1.0, random_state=42)  # Example ratio
+    fs = MRMRFeatureSelector(n_features=n_features)
+    preprocessor = get_preprocessor(True)
+
+    # Preprocess the data
+    X_train = preprocessor.fit_transform(X_train)
+    X_test = preprocessor.transform(X_test)
+    X_train = fs.fit_transform(X_train, y_train.values)
+    X_test = fs.transform(X_test)
+
+    # Resample the training data
+    X_train_resampled, y_train_resampled = ros.fit_resample(X_train, y_train)
+    X_train_resampled, y_train_resampled = rus.fit_resample(X_train_resampled, y_train_resampled)
+
+    # Step 2: Define models
+    xgb_model = XGBClassifier(**xgb_params)
+    lgb_model = LGBMClassifier(**lgb_params)
+    cb_model = CatBoostClassifier(**cat_params)
+
+    # Step 3: Voting classifier
+    estimator = VotingClassifier([
+        ('cb', cb_model),
+        ('xgb', xgb_model),
+        ('lgb', lgb_model)
+    ], voting='soft')
+
+    # Step 4: Fit the model on resampled training data
+    estimator.fit(X_train_resampled, y_train_resampled)
+
+    # Step 5: Evaluate on the untouched test set (validation set)
+    score = custom_metric(estimator, X_test, y_test)
+
+    return score
+
 def fitness_func(ga_instance, solution, solution_idx):
-    data, labels, groups = get_data()
-    X = data
-    y = labels
+    #data, labels, groups = get_data()
+    #X = data
+    #y = labels
 
     start_time = time.time()
     xgb_params = {
@@ -90,52 +139,18 @@ def fitness_func(ga_instance, solution, solution_idx):
     }
 
     n_features = int(solution[39])
-
-
-
     cv = StratifiedGroupKFold(5, shuffle=True, random_state=SEED)
-
+    # Use ThreadPoolExecutor to parallelize
     val_scores = []
-    for fold, (train_idx, test_idx) in enumerate(cv.split(X, y, groups=groups)):
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        fold_data = [(fold, split) for fold, split in enumerate(cv.split(X, y, groups=groups))]
 
-        X_train, X_test = X.iloc[train_idx], X.iloc[test_idx]
-        y_train, y_test = y.iloc[train_idx], y.iloc[test_idx]
-        group_train, group_test = groups.iloc[train_idx], groups.iloc[test_idx]
+        data = (fold_data, n_features, xgb_params, lgb_params, cat_params)
+        # Map the process_fold function to each fold in parallel
+        results = list(executor.map(lambda fd: process_fold(fd, n_features, xgb_params, lgb_params, cat_params), fold_data))
 
-        # Step 1: Apply oversampling and undersampling only to the training set
-        ros = RandomOverSampler(sampling_strategy=0.003, random_state=42)
-        rus = RandomUnderSampler(sampling_strategy=1.0, random_state=42)  # Example ratio
-        fs = MRMRFeatureSelector(n_features=n_features)
-        preprocessor = get_preprocessor(True)
-        X_train = preprocessor.fit_transform(X_train)
-        X_test = preprocessor.transform(X_test)
-        X_train = fs.fit_transform(X_train, y_train.values)
-        X_test = fs.transform(X_test)
-        X_train_resampled, y_train_resampled = ros.fit_resample(X_train, y_train)
-        X_train_resampled, y_train_resampled = rus.fit_resample(X_train_resampled, y_train_resampled)
-
-        # Step 2: Define models
-        xgb_model = XGBClassifier(**xgb_params)
-        lgb_model = LGBMClassifier(**lgb_params)
-        cb_model = CatBoostClassifier(**cat_params)
-
-        # Step 3: Voting classifier
-        estimator = VotingClassifier([
-            ('cb', cb_model),
-            ('xgb', xgb_model),
-            ('lgb', lgb_model)
-        ], voting='soft')
-
-        # Step 4: Fit on the resampled training data
-        estimator.fit(X_train_resampled, y_train_resampled)
-
-        # Step 5: Evaluate on the untouched test set (validation set)
-        #y_pred = estimator.predict_proba(X_test)
-        score = custom_metric(estimator,X_test, y_test)
-        val_scores.append(score)
-
-
-
+    # Collect results from parallel execution
+    val_scores.extend(results)
     fitness = np.mean(val_scores)
     t = time.time() - start_time
     print("pAUC: {0:.10f}, {1:.25f} seconds".format(fitness, t))
@@ -205,7 +220,7 @@ gene_space = [
 # Initialize PyGAD
 ga_instance = pygad.GA(
     #save_best_solutions=True,
-    parallel_processing=['thread',3],
+    parallel_processing=['thread',2],
     save_best_solutions=True,
     random_seed=SEED,
     num_generations=100,  # Number of generations
