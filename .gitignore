@@ -168,3 +168,4 @@ cython_debug/
 /venv3_11/
 *.pkl
 ga_tuning_solution.pkl
+/catboost_info/
