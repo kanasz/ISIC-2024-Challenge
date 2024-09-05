@@ -169,3 +169,4 @@ cython_debug/
 *.pkl
 ga_tuning_solution.pkl
 /catboost_info/
+/catboost_info/

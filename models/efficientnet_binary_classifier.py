@@ -14,28 +14,35 @@ from utils.plot_functions import plot_confusion_matrix
 class EfficientNetBinaryClassifier(pl.LightningModule):
     def __init__(self, num_classes=1, learning_rate=0.001, criterion = F.binary_cross_entropy_with_logits, num_metadata_features=5):
         super(EfficientNetBinaryClassifier, self).__init__()
-        self.save_hyperparameters()
         self.learning_rate = learning_rate
         self.model = EfficientNet.from_pretrained('efficientnet-b0', num_classes=num_classes)
-
+        for param in self.model.parameters():
+            param.requires_grad = False
         #self.model._fc = torch.nn.Linear(self.model._fc.in_features, 1)
-        self.sigmoid = nn.Sigmoid()
+
         num_ftrs = self.model._fc.in_features
         self.model._fc = nn.Identity()
 
+
+
         self.metadata_fc = nn.Sequential(
             nn.Linear(num_metadata_features, 64),
-            nn.ReLU(),
+            nn.LeakyReLU(),
             nn.Dropout(0.5),
             nn.Linear(64, 32),
-            nn.ReLU(),
+            nn.LeakyReLU(),
         )
-
+        self.batch_norm = nn.BatchNorm1d(num_ftrs + 32)
         self.classifier = nn.Sequential(
             nn.Linear(num_ftrs + 32, 128),
-            nn.ReLU(),
-            nn.Linear(128, num_classes),
-            nn.Sigmoid()  # Use sigmoid for binary classification
+            nn.LeakyReLU(),
+            nn.Dropout(0.5),
+
+            nn.Linear(128, 64),
+            nn.LeakyReLU(),
+            nn.Dropout(0.5),
+
+            nn.Linear(64, num_classes)
         )
 
 
@@ -67,6 +74,7 @@ class EfficientNetBinaryClassifier(pl.LightningModule):
         image_features = self.model(image)
         metadata_features = self.metadata_fc(metadata[:, 0])
         combined_features = torch.cat((image_features, metadata_features), dim=1)
+        combined_features = self.batch_norm(combined_features)
         output = self.classifier(combined_features)
         return output
 
@@ -191,8 +199,36 @@ class EfficientNetBinaryClassifier(pl.LightningModule):
         return loss
 
     def configure_optimizers(self):
-        self.optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
-        return self.optimizer
+        #self.optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate)
+        #return self.optimizer
+        self.optimizer = torch.optim.AdamW([
+            {'params': self.model.parameters()},
+            {'params': self.classifier.parameters(), 'lr': self.learning_rate * 1},
+             #{'params': self.metadata_fc.parameters(), 'lr': self.learning_rate * 100},
+            #{'params': self.metadata_fc.parameters(), 'lr': self.learning_rate * 1},  # Higher LR for metadata_fc
+        ], lr=self.learning_rate, weight_decay=1e-4)
+
+        # Example: OneCycleLR scheduler
+
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            self.optimizer,
+            mode='max',  # or 'max' for maximizing metrics like accuracy
+            factor=0.7,  # Factor by which the learning rate will be reduced
+            patience=5,  # Number of epochs with no improvement after which learning rate will be reduced
+            verbose=True,  # Print a message to the console each time the learning rate is reduced
+            min_lr=1e-6  # Minimum learning rate
+        )
+
+        return {
+            'optimizer': self.optimizer,
+            'lr_scheduler': {
+                'scheduler': scheduler,
+                'monitor': 'val_pauc',  # Metric to monitor
+                'interval': 'epoch',  # Interval at which to monitor the metric
+                'frequency': 1,  # How often to apply the scheduler
+                'name': 'reduce_lr_on_plateau'  # Name for logging purposes
+            }
+        }
 
     def on_train_epoch_start(self):
         self.trainer.datamodule.update_train_dataset()

@@ -4,7 +4,7 @@ from sklearn.base import TransformerMixin
 from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
+from sklearn.preprocessing import StandardScaler, OneHotEncoder, MinMaxScaler
 import polars as pl
 
 err = 1e-5

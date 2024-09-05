@@ -35,11 +35,10 @@ if torch.cuda.is_available():
 def objective(trial, batch_size, image_path, metadata_path, split_ratio, subset_ratio, epochs, logger_path, learning_rate):
 
     learning_rate = trial.suggest_loguniform('learning_rate', 1e-6, 5e-5)
-
-    training_minority_oversampling_ceoff = trial.suggest_int('training_minority_oversampling_ceoff', 20, 30)
+    #learning_rate = trial.suggest_loguniform('learning_rate', 1e-5, 1e-3)
+    training_minority_oversampling_ceoff = trial.suggest_int('training_minority_oversampling_ceoff', 40, 60)
     gamma = trial.suggest_int('gamma', 1, 5)
     alpha = trial.suggest_loguniform('alpha', 0.001, 1)
-
     print("LR: {}, ".format(learning_rate))
     #alpha = None
     #gamma = None
@@ -140,12 +139,11 @@ def objective(trial, batch_size, image_path, metadata_path, split_ratio, subset_
         's': ldam_loss_s,
         'subset_ratio':subset_ratio,
         'hp_metric': metric,
-        'training_minority_oversampling_ceoff':training_minority_oversampling_ceoff,
         'epochs':epochs
     }
 
     tb_logger.log_hyperparams(hparams, metric)
-
+    model.save_hyperparameters()
     return metric
 
 
@@ -169,7 +167,7 @@ if __name__ == "__main__":
     parser.add_argument("--image_path", type=str, default="_raw_data/train-image.hdf5")
     parser.add_argument("--metadata_path", type=str, default="_raw_data/train-metadata.csv")
     #parser.add_argument("--batch_size", type=int, default=400)
-    parser.add_argument("--batch_size", type=int, default=160)
+    parser.add_argument("--batch_size", type=int, default=1000)
     parser.add_argument("--split_ratio", type=int, default=0.8)
     parser.add_argument("--logger_path", type=str, default="logs")
     parser.add_argument("--lr", type=float, default=0.0001)

@@ -17,11 +17,16 @@ class EfficientNetV2WithMetadata(pl.LightningModule):
                  criterion = F.binary_cross_entropy_with_logits,
                  num_metadata_features=5):
         super(EfficientNetV2WithMetadata, self).__init__()
-        self.save_hyperparameters()
+        #self.save_hyperparameters()
 
         # Load EfficientNetV2_s with IMAGENET1K_V1 pretrained weights
         weights = EfficientNet_V2_S_Weights.IMAGENET1K_V1
         self.model = efficientnet_v2_s(weights=weights)
+        #self.model = efficientnet_v2_s()
+        # Freeze the preloaded weights
+        for param in self.model.parameters():
+            param.requires_grad = False
+        #self.model = efficientnet_v2_s()
 
         # Get the number of input features for the classifier
         num_ftrs = self.model.classifier[1].in_features
@@ -32,26 +37,33 @@ class EfficientNetV2WithMetadata(pl.LightningModule):
         # Metadata processing layers
         self.metadata_fc = nn.Sequential(
             nn.Linear(num_metadata_features, 64),
-            nn.ReLU(),
-            #nn.Dropout(0.5),
-            #nn.Linear(64, 64),
-            #nn.ReLU(),
+            nn.LeakyReLU(),
+            nn.Dropout(0.5),
+            nn.Linear(64, 32),
+            nn.LeakyReLU(),
         )
+
+        self.batch_norm = nn.BatchNorm1d(num_ftrs + 32)
+        #self.layer_norm = nn.LayerNorm(num_ftrs + 32)
 
         # Combined classifier layers
         self.classifier = nn.Sequential(
-            nn.Linear(num_ftrs + 64, 128),
-            nn.ReLU(),
+            nn.Linear(num_ftrs + 32, 128),
+            nn.LeakyReLU(),
             nn.Dropout(0.5),
-            #nn.Linear(256, 128),
-            #nn.ReLU(),
-            #nn.Dropout(0.5),
-            #nn.Linear(128, 64),
-            #nn.ReLU(),
-            #nn.Dropout(0.5),
-            #nn.Linear(64, num_classes)  # Output layer for binary classification
-            nn.Linear(128, num_classes)
+
+            nn.Linear(128, 64),
+            nn.LeakyReLU(),
+            nn.Dropout(0.5),
+
+            nn.Linear(64, num_classes)
         )
+
+        # Ensure metadata and classifier layers are trainable
+        for param in self.metadata_fc.parameters():
+            param.requires_grad = True
+        for param in self.classifier.parameters():
+            param.requires_grad = True
 
         for param in self.metadata_fc.parameters():
             assert param.requires_grad, "Gradient computation is disabled for metadata_fc"
@@ -99,6 +111,7 @@ class EfficientNetV2WithMetadata(pl.LightningModule):
         image_features = self.model(image)
         metadata_features = self.metadata_fc(metadata[:, 0])
         combined_features = torch.cat((image_features, metadata_features), dim=1)
+        #combined_features = self.batch_norm(combined_features)
         output = self.classifier(combined_features)
         return output
 
@@ -112,6 +125,8 @@ class EfficientNetV2WithMetadata(pl.LightningModule):
         preds = (logits > 0.5).float()
         acc = self.train_accuracy(preds, labels)
         f1 = self.train_f1(preds, labels)
+        if torch.isnan(loss):
+            print("VALIDATION NAN")
 
         self.val_pred_scores.extend(logits.detach().cpu().numpy())
         self.val_targets.extend(labels.detach().cpu().numpy())
@@ -186,11 +201,16 @@ class EfficientNetV2WithMetadata(pl.LightningModule):
     def test_step(self, batch, batch_idx):
         images, metadata, labels = batch
         logits = self(images).squeeze(1)  # Ensure logits is of shape (batch_size,)
-        loss = F.binary_cross_entropy_with_logits(logits, labels.float())
+        loss = self.criterion(logits, labels.float())
 
         preds = torch.sigmoid(logits) > 0.5
-        acc = self.train_accuracy(preds, labels)
-        f1 = self.train_f1(preds, labels)
+        acc = self.test_accuracy(preds, labels)
+        f1 = self.test_f1_f1(preds, labels)
+
+        if torch.isnan(loss):
+            print("TEST NAN")
+        else:
+            print("TEST LOSS: {}".format(loss))
 
         self.log('test_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
         self.log('test_accuracy', acc, on_step=True, on_epoch=True, prog_bar=True, logger=True)
@@ -208,6 +228,11 @@ class EfficientNetV2WithMetadata(pl.LightningModule):
         preds = (logits > 0.5).float()
         acc = self.train_accuracy(preds, labels)
         f1 = self.train_f1(preds, labels)
+
+        if torch.isnan(loss):
+            print("TRAIN NAN")
+        else:
+            print("TRAIN LOSS: {}".format(loss))
 
         # Perform backward pass
         #self.manual_backward(loss)
@@ -238,10 +263,10 @@ class EfficientNetV2WithMetadata(pl.LightningModule):
 
         self.optimizer = torch.optim.AdamW([
             {'params': self.model.parameters()},
-            {'params': self.classifier.parameters(), 'lr': self.learning_rate * 100},
+            {'params': self.classifier.parameters(), 'lr': self.learning_rate * 1},
             #{'params': self.metadata_fc.parameters(), 'lr': self.learning_rate * 100},
-            {'params': self.metadata_fc.parameters(), 'lr': self.learning_rate * 100},  # Higher LR for metadata_fc
-        ], lr=self.learning_rate, weight_decay=1e-5)
+            {'params': self.metadata_fc.parameters(), 'lr': self.learning_rate * 1},  # Higher LR for metadata_fc
+        ], lr=self.learning_rate, weight_decay=1e-4)
 
         # Example: OneCycleLR scheduler
 

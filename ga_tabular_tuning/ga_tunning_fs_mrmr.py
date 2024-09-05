@@ -13,9 +13,10 @@ from tabular_tuning.tabular_tuning_constants import CATEGORICAL_FEATURES
 from tabular_tuning.tabular_tuning_functions import get_data, get_preprocessor
 import time
 import concurrent.futures
-
+import warnings
 from utils.mrmrfeatureselector import MRMRFeatureSelector
-from utils.wknn import WkNNFeatureSelector
+
+warnings.simplefilter("ignore")
 
 sampling_ratio = 0.01
 SEED = 42
@@ -26,7 +27,7 @@ y = labels
 
 
 # Function to handle each fold's operations
-def process_fold(fold_data, n_features, xgb_params, lgb_params, cat_params):
+def process_fold(fold_data, n_features, xgb_params, lgb_params, cat_params, other_params):
     fold, (train_idx, test_idx) = fold_data
 
 
@@ -37,21 +38,23 @@ def process_fold(fold_data, n_features, xgb_params, lgb_params, cat_params):
     group_train, group_test = groups.iloc[train_idx], groups.iloc[test_idx]
 
     # Step 1: Apply oversampling and undersampling only to the training set
-    ros = RandomOverSampler(sampling_strategy=0.003, random_state=42)
-    rus = RandomUnderSampler(sampling_strategy=1.0, random_state=42)  # Example ratio
-    fs = MRMRFeatureSelector(n_features=n_features)
+    ros = RandomOverSampler(sampling_strategy=other_params["oversampling_strategy"], random_state=42)
+    rus = RandomUnderSampler(sampling_strategy=other_params["undersampling_strategy"], random_state=42)  # Example ratio
+    #fs = MRMRFeatureSelector(n_features=n_features)
     preprocessor = get_preprocessor(True)
 
     # Preprocess the data
     X_train = preprocessor.fit_transform(X_train)
     X_test = preprocessor.transform(X_test)
-    X_train = fs.fit_transform(X_train, y_train.values)
-    X_test = fs.transform(X_test)
+    #X_train = fs.fit_transform(X_train, y_train.values)
+    #X_test = fs.transform(X_test)
 
     # Resample the training data
-    X_train_resampled, y_train_resampled = ros.fit_resample(X_train, y_train)
-    X_train_resampled, y_train_resampled = rus.fit_resample(X_train_resampled, y_train_resampled)
-
+    try:
+        X_train_resampled, y_train_resampled = ros.fit_resample(X_train, y_train)
+        X_train_resampled, y_train_resampled = rus.fit_resample(X_train_resampled, y_train_resampled)
+    except:
+        return 0
     # Step 2: Define models
     xgb_model = XGBClassifier(**xgb_params)
     lgb_model = LGBMClassifier(**lgb_params)
@@ -139,6 +142,14 @@ def fitness_func(ga_instance, solution, solution_idx):
     }
 
     n_features = int(solution[39])
+    undersampling_strategy = solution[40]
+    oversampling_strategy =  solution[41]
+
+    other_params = {
+        "undersampling_strategy":undersampling_strategy,
+        "oversampling_strategy": oversampling_strategy
+    }
+
     cv = StratifiedGroupKFold(5, shuffle=True, random_state=SEED)
     # Use ThreadPoolExecutor to parallelize
     val_scores = []
@@ -147,7 +158,7 @@ def fitness_func(ga_instance, solution, solution_idx):
 
         data = (fold_data, n_features, xgb_params, lgb_params, cat_params)
         # Map the process_fold function to each fold in parallel
-        results = list(executor.map(lambda fd: process_fold(fd, n_features, xgb_params, lgb_params, cat_params), fold_data))
+        results = list(executor.map(lambda fd: process_fold(fd, n_features, xgb_params, lgb_params, cat_params, other_params), fold_data))
 
     # Collect results from parallel execution
     val_scores.extend(results)
@@ -214,34 +225,39 @@ gene_space = [
     {'low': 1, 'high': 10},         # l2_leaf_reg
     {'low': 0.5, 'high': 1.0},      # subsample
     {'low': 1, 'high': 50}   ,        #
-    {'low': 30, 'high': 70}         # n_features
+
+
+    {'low': 30, 'high': 70},         # n_features
+    {'low': 0.005, 'high': 0.02},       #unsersampling strategy
+    {'low': 0.001, 'high': 0.003}       #oversampling strategy
 ]
 
-# Initialize PyGAD
-ga_instance = pygad.GA(
-    #save_best_solutions=True,
-    parallel_processing=['thread',2],
-    save_best_solutions=True,
-    random_seed=SEED,
-    num_generations=100,  # Number of generations
-    num_parents_mating=10,  # Number of parents for mating
-    fitness_func=fitness_func,  # Custom fitness function
-    sol_per_pop=20,  # Number of solutions per population
-    num_genes=len(gene_space),  # Number of parameters to optimize
-    gene_space=gene_space,  # Space of each gene (parameter)
-    parent_selection_type="sss",  # Stochastic uniform selection
-    keep_parents=2,  # Number of parents to keep in the next generation
-    crossover_type="single_point",  # Crossover method
-    mutation_type="random",  # Mutation method
-    mutation_percent_genes=10,  # Percentage of genes to mutate
-    on_generation=on_generation,  # Callback after each generation
-    on_stop=on_stop  # Callback when GA stops
-)
+if __name__ == '__main__':
+    # Initialize PyGAD
+    ga_instance = pygad.GA(
+        #save_best_solutions=True,
+        parallel_processing=['process',3],
+        save_best_solutions=True,
+        random_seed=SEED,
+        num_generations=100,  # Number of generations
+        num_parents_mating=10,  # Number of parents for mating
+        fitness_func=fitness_func,  # Custom fitness function
+        sol_per_pop=20,  # Number of solutions per population
+        num_genes=len(gene_space),  # Number of parameters to optimize
+        gene_space=gene_space,  # Space of each gene (parameter)
+        parent_selection_type="sss",  # Stochastic uniform selection
+        keep_parents=2,  # Number of parents to keep in the next generation
+        crossover_type="single_point",  # Crossover method
+        mutation_type="random",  # Mutation method
+        mutation_percent_genes=10,  # Percentage of genes to mutate
+        on_generation=on_generation,  # Callback after each generation
+        on_stop=on_stop  # Callback when GA stops
+    )
 
-ga_instance.run()
+    ga_instance.run()
 
-# After the run, you can get the best solution and its fitness value:
-solution, solution_fitness, solution_idx = ga_instance.best_solution()
+    # After the run, you can get the best solution and its fitness value:
+    solution, solution_fitness, solution_idx = ga_instance.best_solution()
 
-print("Best solution:", solution)
-print("Fitness value of the best solution:", solution_fitness)
+    print("Best solution:", solution)
+    print("Fitness value of the best solution:", solution_fitness)

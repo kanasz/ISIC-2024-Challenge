@@ -8,7 +8,6 @@ Knowledge-Based Systems (2018), doi:https://doi.org/10.1016/j.knosys.2018.10.004
 """
 
 import numpy as np
-import tensorflow as tf
 from sklearn.preprocessing import StandardScaler
 # from sklearn.preprocessing import OneHotEncoder    # needed for multi-class classification
 from sklearn.base import TransformerMixin
